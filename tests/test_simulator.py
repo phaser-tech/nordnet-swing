@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from decimal import Decimal
 
-import numpy as np
 import pandas as pd
 import pytest
 

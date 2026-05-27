@@ -24,7 +24,7 @@ class CertSpec:
     Negative leverage = Bear cert (goes up when underlying goes down).
 
     daily_fee_pct is the daily administration fee charged by the issuer.
-    Typical values are 0.0005–0.0010 (i.e. ~0.2–0.4% annualized).
+    Typical values are 0.0005-0.0010 (i.e. ~0.2-0.4% annualized).
     """
 
     name: str

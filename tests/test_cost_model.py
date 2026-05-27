@@ -4,8 +4,6 @@ from __future__ import annotations
 
 from decimal import Decimal
 
-import pytest
-
 from packages.backtest.cost_model import (
     CostAssumptions,
     estimate_round_trip_cost,
