@@ -47,7 +47,16 @@ ignore = ["E501"]
 python_version = "3.12"
 strict = true
 plugins = ["pydantic.mypy"]
-exclude = ["notebooks/", "data/"]
+# Anchored to the repo root: an unanchored "data/" also matches "market_data/"
+# (re.search), which would silently exclude packages/market_data/ from checks.
+exclude = ["^notebooks/", "^data/"]
+
+# pandas and yfinance ship no type stubs. Treat them as untyped at the import
+# boundary rather than pulling in strict third-party stubs. Per CLAUDE.md,
+# pandas/float lives in the indicators/math layer, not the typed domain layer.
+[[tool.mypy.overrides]]
+module = ["yfinance.*", "pandas.*"]
+ignore_missing_imports = true
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"

@@ -9,12 +9,12 @@ from __future__ import annotations
 
 from datetime import datetime
 from decimal import Decimal
-from enum import Enum
+from enum import Enum, StrEnum
 
 from pydantic import BaseModel, ConfigDict, Field
 
 
-class Direction(str, Enum):
+class Direction(StrEnum):
     """Trade direction. LONG = bull cert. SHORT = bear cert."""
 
     LONG = "long"
