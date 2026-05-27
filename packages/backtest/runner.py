@@ -19,13 +19,8 @@ round-trip cost so reported EV/returns are net of costs (CLAUDE.md: "EV after
 costs"). We deduct `estimate_round_trip_cost().total_pct` directly from the cert
 return, i.e. as a fraction of the *cert* position. That matches CLAUDE.md's
 "issuer spread 0.3-0.8% round-trip" (a cost on the cert you trade) and is
-consistent with `required_underlying_move_for_breakeven` (= total_pct / leverage),
-which the gating filter is built on.
-
-NOTE: `CostBreakdown.in_cert_terms()` (total_pct * leverage) is *inconsistent*
-with that breakeven function (total_pct / leverage) — they imply cert-terms costs
-differing by leverage^2. We intentionally do not use `in_cert_terms` here. Flagged
-for a cost-model follow-up; out of scope for this task.
+consistent with `required_underlying_move_for_breakeven` (= total_pct / leverage,
+via `CostBreakdown.in_underlying_terms`), which the gating filter is built on.
 """
 
 from __future__ import annotations

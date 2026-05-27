@@ -19,9 +19,16 @@ from decimal import Decimal
 
 @dataclass(frozen=True)
 class CostBreakdown:
-    """Round-trip cost decomposition, in underlying-return terms.
+    """Round-trip cost decomposition, as a fraction of the *cert* position.
 
-    To convert to cert-return terms, multiply by leverage.
+    `total_pct` is the issuer spread + slippage paid on the cert you actually
+    trade (CLAUDE.md: 0.3-0.8% round-trip in normal conditions). It is already
+    in cert terms and does NOT scale with leverage — a 0.6% cert spread costs
+    0.6% of the position whether the cert is 3x or 15x.
+
+    To express the same cost in *underlying-return* terms — how far the
+    underlying must move to cover it — divide by leverage (`in_underlying_terms`),
+    since a cert return is `leverage * underlying_return`.
     """
 
     courtage_pct: Decimal = Decimal("0")
@@ -32,9 +39,9 @@ class CostBreakdown:
     def total_pct(self) -> Decimal:
         return self.courtage_pct + self.spread_pct + self.slippage_pct
 
-    def in_cert_terms(self, leverage: Decimal) -> Decimal:
-        """Cost expressed as a percentage of cert position value."""
-        return self.total_pct * abs(leverage)
+    def in_underlying_terms(self, leverage: Decimal) -> Decimal:
+        """Underlying move needed to cover this cert-terms cost = total / leverage."""
+        return self.total_pct / abs(leverage)
 
 
 @dataclass(frozen=True)
@@ -55,7 +62,7 @@ def estimate_round_trip_cost(
     in_stress: bool = False,
     assumptions: CostAssumptions | None = None,
 ) -> CostBreakdown:
-    """Estimate round-trip cost in underlying-return terms.
+    """Estimate round-trip cost as a fraction of the cert position.
 
     Args:
         in_stress: True during major news releases or high-vol regimes.
@@ -98,7 +105,7 @@ def required_underlying_move_for_breakeven(
         Required underlying move as a Decimal fraction (e.g. 0.001 = 0.1%).
     """
     cost = estimate_round_trip_cost(in_stress=in_stress, assumptions=assumptions)
-    return cost.total_pct / abs(leverage)
+    return cost.in_underlying_terms(leverage)
 
 
 def signal_passes_cost_filter(

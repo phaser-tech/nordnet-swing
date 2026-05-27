@@ -31,12 +31,29 @@ class TestEstimateRoundTripCost:
         assert stress.total_pct == Decimal("0.016")
         assert stress.spread_pct == normal.spread_pct * Decimal("3.0")
 
-    def test_in_cert_terms_scales_by_leverage(self) -> None:
-        """Cost in cert terms = cost in underlying terms * leverage."""
+    def test_total_pct_is_cert_terms_and_leverage_independent(self) -> None:
+        """total_pct is the cert-terms round-trip cost; it does not scale with leverage."""
         cost = estimate_round_trip_cost()
-        assert cost.in_cert_terms(Decimal("5")) == cost.total_pct * Decimal("5")
-        # Same for negative leverage (bear cert) — uses abs.
-        assert cost.in_cert_terms(Decimal("-5")) == cost.total_pct * Decimal("5")
+        # CLAUDE.md: issuer spread 0.3-0.8% round-trip on the cert itself.
+        assert Decimal("0.003") <= cost.total_pct <= Decimal("0.008")
+
+    def test_in_underlying_terms_divides_by_leverage(self) -> None:
+        """Underlying must move cert_cost / leverage to cover round-trip costs."""
+        cost = estimate_round_trip_cost()
+        assert cost.in_underlying_terms(Decimal("5")) == cost.total_pct / Decimal("5")
+        # Bear cert (negative leverage) uses absolute leverage.
+        assert cost.in_underlying_terms(Decimal("-5")) == cost.total_pct / Decimal("5")
+
+    def test_cert_and_underlying_costs_are_consistent(self) -> None:
+        """The fix: scaling the underlying breakeven by leverage recovers the cert cost.
+
+        Guards against the old leverage^2 inconsistency between the cert-terms
+        cost and `required_underlying_move_for_breakeven`.
+        """
+        cost = estimate_round_trip_cost()
+        for lev in (Decimal("3"), Decimal("5"), Decimal("15")):
+            assert cost.in_underlying_terms(lev) * lev == cost.total_pct
+            assert required_underlying_move_for_breakeven(lev) == cost.in_underlying_terms(lev)
 
 
 class TestBreakeven:
