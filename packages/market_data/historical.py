@@ -35,7 +35,7 @@ log = structlog.get_logger(__name__)
 # Cross-asset universe we hunt edges across (CLAUDE.md "edge sources"):
 # OMX + Nasdaq + S&P (equity), VIX (vol), DXY + 10y yield (macro), gold (risk).
 DEFAULT_INSTRUMENTS: tuple[str, ...] = (
-    "^OMXS30",  # OMX Stockholm 30
+    "^OMX",  # OMX Stockholm 30 (Yahoo symbol; ^OMXS30 returns no data)
     "^NDX",  # Nasdaq 100
     "^GSPC",  # S&P 500
     "^VIX",  # CBOE Volatility Index
