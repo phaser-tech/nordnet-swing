@@ -137,3 +137,32 @@ def test_empty_bars_returns_empty_result() -> None:
     assert result.trades == []
     assert result.equity_curve == []
     assert result.buy_and_hold_return == Decimal("0")
+
+
+def test_short_signal_profits_when_underlying_falls() -> None:
+    # Bear cert (negative leverage) should make money on a down day.
+    idx = pd.DatetimeIndex(pd.to_datetime(["2024-01-02"]), name="ts").tz_localize("UTC")
+    bars = pd.DataFrame(
+        {"Open": [100.0], "High": [101.0], "Low": [97.0], "Close": [98.0], "Volume": [1000]},
+        index=idx,
+    )
+    short = Signal(
+        timestamp=idx[0].to_pydatetime(),
+        strategy_name="fixed",
+        instrument="TEST",
+        direction=Direction.SHORT,
+        conviction=Conviction.HIGH,
+        suggested_entry=Decimal("100"),
+        suggested_stop=Decimal("101"),
+        suggested_target=Decimal("98"),  # expects a 2% fall -> passes cost filter
+    )
+    result = BacktestRunner(
+        _config(), _FixedStrategy([short]), bars_loader=_loader(bars)
+    ).run()
+
+    assert len(result.trades) == 1
+    trade = result.trades[0]
+    assert trade.direction == Direction.SHORT
+    # Open=100, Close=98 -> underlying -2%; bear 5x = +10% gross, -0.6% cost = +9.4%.
+    assert abs(trade.cert_return - Decimal("0.094")) < Decimal("1e-9")
+    assert trade.pnl > 0  # profit on a falling underlying
