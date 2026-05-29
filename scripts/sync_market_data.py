@@ -1,13 +1,19 @@
-"""CLI: sync historical daily bars for the default instruments into TimescaleDB.
+"""CLI: sync historical bars for the default instruments into TimescaleDB.
 
-Runs schema migrations (idempotent), then fetches + stores ~10 years of daily
-bars for the default cross-asset universe so the backtest framework has data
+Runs schema migrations (idempotent), then fetches + stores bars at the
+requested interval for the chosen tickers so the backtest framework has data
 to work with.
+
+Default profile is the cross-asset universe at ``1d`` going back ``--years``.
+For ``1h``, yfinance returns at most ~730 days in a single window, so pick a
+matching window (``--years 2``) and a narrower ticker list (e.g. ``^OMX``)
+since the intraday Phase-1 work only needs the traded instrument.
 
 Usage:
     uv run python scripts/sync_market_data.py
     uv run python scripts/sync_market_data.py --years 5
-    uv run python scripts/sync_market_data.py --tickers ^OMXS30 ^NDX
+    uv run python scripts/sync_market_data.py --tickers ^OMX ^NDX
+    uv run python scripts/sync_market_data.py --interval 1h --tickers ^OMX --years 2
 """
 
 from __future__ import annotations
@@ -79,7 +85,11 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument(
         "--interval",
         default=DAILY_INTERVAL,
-        help=f"Bar interval (default: {DAILY_INTERVAL}; only daily supported).",
+        help=(
+            f"Bar interval (default: {DAILY_INTERVAL}; 1d and 1h supported). "
+            "For 1h, yfinance returns at most ~730 days of history in one window — "
+            "pair with --years 2 or less."
+        ),
     )
     return parser.parse_args(argv)
 
