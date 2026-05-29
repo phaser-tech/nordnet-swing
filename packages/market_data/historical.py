@@ -13,9 +13,15 @@ columns use ``Decimal``/``numeric`` to preserve precision. The DataFrame API
 exposes ``float`` because that is what pandas math and the strategy layer use
 ("float only for indicators/math").
 
-Intervals: ``1d`` only for now. Intraday is intentionally deferred to a later
-issue — yfinance restricts intraday history depth (e.g. ~60 days for 1m, ~730
-days for hourly), which needs windowed/incremental fetching we don't build yet.
+Intervals: ``1d`` and ``1h`` are supported. yfinance returns up to ~730 days of
+1h history in a single window — enough for the first round of Tier-2 intraday
+OOS tests on ``^OMX`` (issue #16). Sub-hour granularity (``1m``, ``5m``) and
+deeper 1h history both need windowed/incremental fetching and stay deferred.
+
+Bars come back at top-of-hour with whatever the source venue published; for
+Stockholm-listed indices the last bar of the trading day is often a partial
+covering the 17:00-17:30 CET close — we keep it as observed and let strategies
+filter if they need to.
 """
 
 from __future__ import annotations
@@ -45,8 +51,10 @@ DEFAULT_INSTRUMENTS: tuple[str, ...] = (
 )
 
 DAILY_INTERVAL = "1d"
-# Only daily for now; intraday deferred (see module docstring).
-SUPPORTED_INTERVALS: frozenset[str] = frozenset({DAILY_INTERVAL})
+HOURLY_INTERVAL = "1h"
+# yfinance gives ~10y for daily and ~730d for 1h in a single window. Sub-hour
+# and beyond-730d intraday are deferred (windowed fetch — see module docstring).
+SUPPORTED_INTERVALS: frozenset[str] = frozenset({DAILY_INTERVAL, HOURLY_INTERVAL})
 
 # Canonical OHLCV columns for the DataFrame API, in storage order.
 _OHLCV_COLUMNS: tuple[str, ...] = ("Open", "High", "Low", "Close", "Volume")

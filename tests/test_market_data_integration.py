@@ -18,7 +18,12 @@ import pytest
 from dotenv import load_dotenv
 
 from packages.market_data.db import connect, run_migrations
-from packages.market_data.historical import DAILY_INTERVAL, get_bars, store_bars
+from packages.market_data.historical import (
+    DAILY_INTERVAL,
+    HOURLY_INTERVAL,
+    get_bars,
+    store_bars,
+)
 
 load_dotenv()
 
@@ -105,6 +110,47 @@ def test_upsert_updates_revised_bars() -> None:
 
     out = get_bars(TEST_TICKER, "2019-01-01", "2021-01-01", DAILY_INTERVAL)
     assert out["Close"].tolist() == [200.0, 201.0]
+
+
+def _hourly_frame(closes: list[float]) -> pd.DataFrame:
+    """Like ``_canonical_frame`` but stamped at top-of-hour for 1h tests."""
+    index = pd.DatetimeIndex(
+        pd.to_datetime([f"2020-01-02T{9 + i:02d}:00:00" for i in range(len(closes))]),
+        name="ts",
+    ).tz_localize("UTC")
+    return pd.DataFrame(
+        {
+            "Open": [c - 0.5 for c in closes],
+            "High": [c + 1.0 for c in closes],
+            "Low": [c - 1.0 for c in closes],
+            "Close": closes,
+            "Volume": [1000 + i for i in range(len(closes))],
+        },
+        index=index,
+    )
+
+
+def test_hourly_store_then_get_roundtrip() -> None:
+    frame = _hourly_frame([100.0, 101.0, 102.0])
+    written = store_bars(frame, TEST_TICKER, HOURLY_INTERVAL)
+    assert written == 3
+
+    out = get_bars(TEST_TICKER, "2019-01-01", "2021-01-01", HOURLY_INTERVAL)
+    assert list(out.columns) == ["Open", "High", "Low", "Close", "Volume"]
+    assert len(out) == 3
+    assert out["Close"].tolist() == [100.0, 101.0, 102.0]
+    assert str(out.index.tz) == "UTC"
+
+
+def test_daily_and_hourly_coexist_without_interference() -> None:
+    """PK is (ticker, interval, ts) so the same ticker at two intervals shouldn't collide."""
+    store_bars(_canonical_frame([100.0, 101.0]), TEST_TICKER, DAILY_INTERVAL)
+    store_bars(_hourly_frame([200.0, 201.0, 202.0]), TEST_TICKER, HOURLY_INTERVAL)
+
+    daily = get_bars(TEST_TICKER, "2019-01-01", "2021-01-01", DAILY_INTERVAL)
+    hourly = get_bars(TEST_TICKER, "2019-01-01", "2021-01-01", HOURLY_INTERVAL)
+    assert daily["Close"].tolist() == [100.0, 101.0]
+    assert hourly["Close"].tolist() == [200.0, 201.0, 202.0]
 
 
 def test_numeric_precision_preserved_in_db() -> None:

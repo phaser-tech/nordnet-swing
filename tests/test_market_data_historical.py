@@ -15,6 +15,7 @@ import pytest
 from packages.market_data import historical
 from packages.market_data.historical import (
     DAILY_INTERVAL,
+    HOURLY_INTERVAL,
     Bar,
     _frame_to_bars,
     _normalize_yf_frame,
@@ -46,8 +47,11 @@ class TestValidateInterval:
     def test_accepts_daily(self) -> None:
         _validate_interval(DAILY_INTERVAL)  # no raise
 
-    @pytest.mark.parametrize("interval", ["1m", "5m", "1h", "1wk"])
-    def test_rejects_intraday_and_others(self, interval: str) -> None:
+    def test_accepts_hourly(self) -> None:
+        _validate_interval(HOURLY_INTERVAL)  # no raise
+
+    @pytest.mark.parametrize("interval", ["1m", "5m", "1wk"])
+    def test_rejects_sub_hour_and_others(self, interval: str) -> None:
         with pytest.raises(ValueError, match="Unsupported interval"):
             _validate_interval(interval)
 
@@ -162,7 +166,7 @@ class TestFetchBars:
         out = fetch_bars("^OMXS30", date(2024, 1, 1), date(2024, 2, 1))
         assert out.empty
 
-    def test_rejects_intraday_before_calling_yfinance(
+    def test_rejects_sub_hour_before_calling_yfinance(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         def boom(**_: object) -> pd.DataFrame:
@@ -171,6 +175,24 @@ class TestFetchBars:
         monkeypatch.setattr(historical.yf, "download", boom)
         with pytest.raises(ValueError, match="Unsupported interval"):
             fetch_bars("^OMXS30", date(2024, 1, 1), date(2024, 2, 1), interval="1m")
+
+    def test_passes_hourly_interval_through_to_yfinance(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        captured: dict[str, object] = {}
+
+        def fake_download(**kwargs: object) -> pd.DataFrame:
+            captured.update(kwargs)
+            return _yf_like_frame(multiindex=True)
+
+        monkeypatch.setattr(historical.yf, "download", fake_download)
+        out = fetch_bars(
+            "^OMX", date(2024, 1, 1), date(2024, 2, 1), interval=HOURLY_INTERVAL
+        )
+
+        assert captured["interval"] == HOURLY_INTERVAL
+        assert list(out.columns) == ["Open", "High", "Low", "Close", "Volume"]
+        assert str(out.index.tz) == "UTC"
 
 
 class TestSync:
