@@ -75,7 +75,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     p.add_argument("--start", type=date.fromisoformat, default=date(2018, 1, 1))
     p.add_argument("--end", type=date.fromisoformat, default=date.today())
     p.add_argument("--split", type=date.fromisoformat, default=date(2023, 1, 1))
-    p.add_argument("--window", type=int, default=60, help="trailing z-score window (days)")
+    p.add_argument("--window", type=int, default=30, help="trailing z-score window (days)")
     p.add_argument("--sigma", type=float, default=2.0, help="extreme threshold in sigmas")
     return p.parse_args(argv)
 

@@ -80,7 +80,7 @@ def bet_direction_series(bars: pd.DataFrame, *, window: int, sigma: float) -> pd
 class MeanReversionExtremeStrategy:
     """Bets reversion on T+1 after a >=sigma daily move on T. Satisfies StrategyLike."""
 
-    def __init__(self, instrument: str, *, window: int = 60, sigma: float = 2.0) -> None:
+    def __init__(self, instrument: str, *, window: int = 30, sigma: float = 2.0) -> None:
         if window <= 1:
             raise ValueError(f"window must be > 1, got {window}")
         if sigma <= 0:
