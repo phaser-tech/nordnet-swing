@@ -115,11 +115,12 @@ What we've actually tested and learned. Don't re-test dead configurations withou
 |---|---|---|---|
 | SMA crossover | 5x, daily, open→close | No edge (plumbing test, expected) | #4 |
 | Cross-asset confluence | 5x, daily, open→close, k=0.5 | Thin in-sample (t=1.87), failed OOS (t=1.33, net Sharpe 0.02) | #8, #10 |
-| Volume-confirmed breakout | 5x, daily, 20-day Donchian, 1.5x vol | Negative gross in train AND test (t=-0.18, t=-0.22). Predicts OPPOSITE direction. | #11 |
+| Volume-confirmed breakout | 5x, daily, 20-day Donchian, 1.5x vol | Negative gross in train AND test (t=-0.18, t=-0.22). Predicts OPPOSITE direction. | #11, #15 |
+| Mean reversion after >=2σ daily move | 5x, daily, T+1 open→close, frozen 30d/2σ | No edge OOS (test t=-0.39, net -10.3%); decomposition shows gap-vs-intraday split is window-dependent and the tradeable intraday leg mildly continues | #13, #14 |
 
 ### Diagnostic pattern (important)
 
-Two independent strategies (cross-asset macro signal + technical breakout signal) failed via the *same mechanism*: information is priced into the open gap before our open→close window. The breakout strategy actually had negative gross return — meaning the signal predicts the opposite of what it should — because by the time we trade, the move has already happened in the gap.
+Three independent strategies — cross-asset macro signal, technical breakout signal, and mean reversion after extreme daily moves — failed via the *same mechanism*: information (or reversion) is priced into the open gap before our open→close window. The breakout was the cleanest case: negative gross return, meaning the signal predicts the opposite direction, because by the time we trade the move has already happened in the gap. Mean reversion at the canonical 30d window was less clearly a gap artifact (a 60d window decomposed more gap-skewed; 30d less so), but the OOS verdict was identical — the tradeable intraday leg mildly continues rather than reverts.
 
 This is a structural finding, not a strategy-specific failure:
 - Daily-bar signals using prior-day info systematically miss the move
@@ -138,7 +139,7 @@ Document where our design rules conflict with empirically observed reality. Surf
 
 ### No-overnight rule vs gap-located edge
 
-The no-overnight rule was established to avoid volatility decay on leveraged certificates over multi-day holds. But two independent Phase 0 strategies failed because edge lives in the overnight gap that this rule forbids us to capture.
+The no-overnight rule was established to avoid volatility decay on leveraged certificates over multi-day holds. But three Phase 0 strategies failed in ways consistent with directional moves concentrating in the overnight gap this rule forbids us to capture (cleanly for the breakout, more weakly for mean reversion at canonical 30d — but in every case the tradeable open→close leg held no edge).
 
 **Open question**: should we reconsider for narrowly-scoped single-night gap-capture trades? A one-night hold suffers minimal vol decay (decay compounds over many days of oscillation; one directional night is minor). Financing for one night is negligible. This is a legitimate design conversation that the diagnostic pattern now justifies opening.
 
@@ -198,21 +199,19 @@ Don't guess on architecture decisions. Don't silently choose. We'd rather pause 
 
 ## Phase status
 
-We are at the **end of Phase 0**: framework complete, three strategies tested via OOS, daily-bar edge exhausted with current architecture.
+We are at **end of Phase 0 / start of Phase 1**. Three strategies have been OOS-tested (all failed via the gap-arbitrage mechanism). The pre-registered decision tree from issue #13 landed on path A (go intraday); the first Phase 1 building block is in.
 
 ### Completed
-- Phase 0: backtest framework + cost model + OOS harness + 3 strategies tested
+- Phase 0: backtest framework + cost model + OOS harness + 3 strategies tested (all failed OOS)
+- Phase 1 (data layer, partial): hourly yfinance ingestion for `^OMX` (#17)
 
-### Active decisions
-Before moving to Phase 1, the user is evaluating three paths:
-- **A**: Phase 1 enligt plan (Nordnet client + intraday data) — test intraday-precision strategies
-- **B**: Reconsider no-overnight rule for gap-capture trades, given the diagnostic findings
-- **C**: Explore more Tier 1 edge sources (event-window, vol regime, mean reversion, calendar effects, correlation regime) which are still testable in Phase 0
+### Path chosen
+Path **A** — Phase 1 intraday. The pre-reg from #13 was: net edge survives → carry to Phase 1; fails AND nothing significant anywhere → daily-bar OMX edge is dead, go Phase 1. We landed on the latter. Next step is the first intraday strategy test on the new 1h bars.
 
-When the user picks a path, that becomes the active phase. Until then, no new strategy work proceeds.
+Paths **B** (reconsider no-overnight for narrow gap-capture trades) and the still-untested parts of **C** (event-window, vol regime, calendar effects, correlation regime) remain open as future fallbacks if Phase 1 intraday execution also fails to find edge.
 
-### Phases ahead (if continuing)
-1. Phase 1 — Nordnet client + intraday market data ingestion
+### Phases ahead (Phase 1 in progress)
+1. Phase 1 — Nordnet client + intraday market data ingestion (data layer started, client + live feed pending)
 2. Phase 2 — Decision engine + cost-aware execution simulator (with intraday)
 3. Phase 3 — Live execution gateway + risk supervisor + reconciler
 4. Phase 4 — Production deployment + paper trading
