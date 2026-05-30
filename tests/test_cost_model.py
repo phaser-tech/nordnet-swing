@@ -138,3 +138,40 @@ class TestCustomAssumptions:
         wide_spread = CostAssumptions(spread_pct_round_trip=Decimal("0.02"))
         cost = estimate_round_trip_cost(assumptions=wide_spread)
         assert cost.spread_pct == Decimal("0.02")
+
+
+class TestOvernightFinancing:
+    def test_default_overnight_nights_is_zero_so_existing_callers_unchanged(self) -> None:
+        """Backwards compatibility: callers that don't pass overnight_nights see no change."""
+        cost = estimate_round_trip_cost()
+        assert cost.overnight_financing_pct == Decimal("0")
+        assert cost.total_pct == Decimal("0.006")  # same 0.6% as before the extension
+
+    def test_one_night_adds_default_financing(self) -> None:
+        cost = estimate_round_trip_cost(overnight_nights=1)
+        assert cost.overnight_financing_pct == Decimal("0.0003")
+        # 0.5% spread + 0.1% slippage + 0.03% financing = 0.63%
+        assert cost.total_pct == Decimal("0.0063")
+
+    def test_financing_scales_linearly_with_nights(self) -> None:
+        zero = estimate_round_trip_cost(overnight_nights=0)
+        one = estimate_round_trip_cost(overnight_nights=1)
+        two = estimate_round_trip_cost(overnight_nights=2)
+        assert one.overnight_financing_pct - zero.overnight_financing_pct == Decimal("0.0003")
+        assert two.overnight_financing_pct == Decimal("0.0006")
+
+    def test_negative_nights_rejected(self) -> None:
+        import pytest
+
+        with pytest.raises(ValueError, match="overnight_nights"):
+            estimate_round_trip_cost(overnight_nights=-1)
+
+    def test_financing_carries_through_to_underlying_terms(self) -> None:
+        """in_underlying_terms divides the *total* (including financing) by leverage."""
+        cost = estimate_round_trip_cost(overnight_nights=1)
+        assert cost.in_underlying_terms(Decimal("5")) == cost.total_pct / Decimal("5")
+
+    def test_custom_financing_rate(self) -> None:
+        higher = CostAssumptions(overnight_financing_pct_per_night=Decimal("0.001"))
+        cost = estimate_round_trip_cost(overnight_nights=1, assumptions=higher)
+        assert cost.overnight_financing_pct == Decimal("0.001")

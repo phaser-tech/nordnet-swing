@@ -21,23 +21,33 @@ from decimal import Decimal
 class CostBreakdown:
     """Round-trip cost decomposition, as a fraction of the *cert* position.
 
-    `total_pct` is the issuer spread + slippage paid on the cert you actually
-    trade (CLAUDE.md: 0.3-0.8% round-trip in normal conditions). It is already
-    in cert terms and does NOT scale with leverage — a 0.6% cert spread costs
-    0.6% of the position whether the cert is 3x or 15x.
+    `total_pct` is the issuer spread + slippage + (optional) overnight financing
+    paid on the cert you actually trade. The default is in cert terms and does
+    NOT scale with leverage — a 0.6% cert spread costs 0.6% of the position
+    whether the cert is 3x or 15x.
 
     To express the same cost in *underlying-return* terms — how far the
     underlying must move to cover it — divide by leverage (`in_underlying_terms`),
     since a cert return is `leverage * underlying_return`.
+
+    `overnight_financing_pct` is only non-zero when a strategy explicitly opts
+    in via `estimate_round_trip_cost(overnight_nights=N)`. The default (and the
+    behaviour for the four open->close Phase-0/1 strategies) is zero.
     """
 
     courtage_pct: Decimal = Decimal("0")
     spread_pct: Decimal = Decimal("0")
     slippage_pct: Decimal = Decimal("0")
+    overnight_financing_pct: Decimal = Decimal("0")
 
     @property
     def total_pct(self) -> Decimal:
-        return self.courtage_pct + self.spread_pct + self.slippage_pct
+        return (
+            self.courtage_pct
+            + self.spread_pct
+            + self.slippage_pct
+            + self.overnight_financing_pct
+        )
 
     def in_underlying_terms(self, leverage: Decimal) -> Decimal:
         """Underlying move needed to cover this cert-terms cost = total / leverage."""
@@ -49,17 +59,27 @@ class CostAssumptions:
     """Configurable assumptions about cert trading costs.
 
     Defaults are conservative for liquid OMX/Nasdaq Bull/Bear certs.
+
+    `overnight_financing_pct_per_night` is the per-night holding cost a
+    leveraged certificate charges (issuer borrows `(L-1)x` your capital and
+    passes a financing rate through). It is only applied when the caller
+    explicitly opts in via `overnight_nights > 0` -- otherwise the rule is
+    "no overnight holds" and the rate is irrelevant. Default 0.03%/night is a
+    conservative current-rate-environment estimate; calibrate against real
+    Nordnet Markets statements when we have live data.
     """
 
     spread_pct_round_trip: Decimal = Decimal("0.005")  # 0.5% baseline
     spread_widen_stress_multiplier: Decimal = Decimal("3.0")
     slippage_pct_round_trip: Decimal = Decimal("0.001")  # 0.1% baseline
     courtage_pct: Decimal = Decimal("0")  # 0 for Nordnet Markets
+    overnight_financing_pct_per_night: Decimal = Decimal("0.0003")  # 0.03%/night
 
 
 def estimate_round_trip_cost(
     *,
     in_stress: bool = False,
+    overnight_nights: int = 0,
     assumptions: CostAssumptions | None = None,
 ) -> CostBreakdown:
     """Estimate round-trip cost as a fraction of the cert position.
@@ -67,22 +87,31 @@ def estimate_round_trip_cost(
     Args:
         in_stress: True during major news releases or high-vol regimes.
                    Applies spread widening multiplier.
+        overnight_nights: Number of overnights the trade is held. Default 0
+                   matches the project's default no-overnight rule; pass >=1
+                   only for explicitly-approved gap-capture strategies
+                   (CLAUDE.md "Approved overnight exceptions").
         assumptions: Override default cost assumptions.
 
     Returns:
-        CostBreakdown with courtage, spread, slippage decomposed.
+        CostBreakdown with courtage, spread, slippage, financing decomposed.
     """
     if assumptions is None:
         assumptions = CostAssumptions()
+    if overnight_nights < 0:
+        raise ValueError(f"overnight_nights must be >= 0, got {overnight_nights}")
 
     spread = assumptions.spread_pct_round_trip
     if in_stress:
         spread = spread * assumptions.spread_widen_stress_multiplier
 
+    financing = assumptions.overnight_financing_pct_per_night * Decimal(overnight_nights)
+
     return CostBreakdown(
         courtage_pct=assumptions.courtage_pct,
         spread_pct=spread,
         slippage_pct=assumptions.slippage_pct_round_trip,
+        overnight_financing_pct=financing,
     )
 
 

@@ -60,7 +60,7 @@ These are non-negotiable. Surface a question before violating one of these:
 ### Leveraged certificates have daily reset
 - Bull/Bear certificates apply leverage to *daily* returns, then reset
 - Holding longer than 1 day introduces compounding drag (volatility decay)
-- We never hold overnight as default (see Strategic tensions below for the caveat)
+- **Default: no overnight holds.** Multi-day holds are prohibited. *Single*-night holds are allowed only via strategies explicitly listed in "Approved overnight exceptions" below (a one-night hold has no compounding drag and a small, quantifiable financing cost — see #21 for the ratifying case after four open→close strategies failed at the daily-bar architecture).
 - Cert price simulator in `packages/backtest/simulator.py` handles this correctly
 
 ### Nordnet API quirks
@@ -137,13 +137,17 @@ This is a structural finding, not a strategy-specific failure:
 
 Document where our design rules conflict with empirically observed reality. Surface these when designing new strategies.
 
-### No-overnight rule vs gap-located edge
+### No-overnight rule vs gap-located edge (resolved; narrow exception ratified)
 
-The no-overnight rule was established to avoid volatility decay on leveraged certificates over multi-day holds. But three Phase 0 strategies failed in ways consistent with directional moves concentrating in the overnight gap this rule forbids us to capture (cleanly for the breakout, more weakly for mean reversion at canonical 30d — but in every case the tradeable open→close leg held no edge).
+Four Phase 0/1 strategies (#10, #14, #15, #20) failed in ways consistent with directional moves concentrating in the overnight gap. The rule existed to avoid volatility decay on multi-day holds; a *single* night has no compounding drag and a small, quantifiable financing cost (~0.03%/night in the cost model). Issue #21 documented the case and the user ratified a narrow exception.
 
-**Open question**: should we reconsider for narrowly-scoped single-night gap-capture trades? A one-night hold suffers minimal vol decay (decay compounds over many days of oscillation; one directional night is minor). Financing for one night is negligible. This is a legitimate design conversation that the diagnostic pattern now justifies opening.
+The rule now reads: **no multi-day overnight holds; single-night holds allowed only via strategies registered below.** When designing a new overnight strategy, propose it as a new entry in the list (issue + ratification) — do not extend silently.
 
-When you face this tension, surface it rather than silently extending or violating the rule.
+### Approved overnight exceptions
+
+| Strategy | Hold | Signal source | Issue / PR |
+|---|---|---|---|
+| `cross_asset_gap` | one night (close T-1 → open T) | cross-asset confluence (frozen PR #10 config) | #21 |
 
 ### Daily bars only vs intraday-native edge sources
 
