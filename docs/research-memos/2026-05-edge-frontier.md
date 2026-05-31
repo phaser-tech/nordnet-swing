@@ -273,3 +273,32 @@ If the pessimistic view turns out to be right, the honest answer for an individu
 The narrow space where I think there *is* probably accessible edge for a careful retail trader is exactly the two top recommendations: **(a) reducing cost friction via better instruments**, where the math is mechanical and the institutional players already exploit this; and **(b) combining multiple weak signals**, where Grinold's law gives a quantitative reason to believe in a small but real edge that no single-signal test can detect. Both are testable cheaply. Neither requires us to discover something the academic literature has missed — only to apply known constructions to our specific market.
 
 If after Rank 1 + Rank 2 there is still no net edge, the honest recommendation is to declare the search complete, document the result, and either (i) accept passive exposure as the answer, or (ii) escalate to a structurally different commitment: Phase 1.5 with live broker integration and real-spread measurement, accepting the operational cost in exchange for the chance that our cost model has been systematically pessimistic. That is a *capital* and *time* decision, not a research decision.
+
+---
+
+## Postscript — Rank 1 result (added 2026-05-31, after empirical test)
+
+Rank 1 was implemented and run while this memo was a draft. PR #24 added a `FUTURES_PROFILE` to `cost_model.py` and reran PR #22's gap-capture under it with everything else frozen. The result moves the prior in §6 meaningfully.
+
+Same cross-asset confluence signal, same horizon (close(T-1) → open(T)), same 5× exposure, same split. Only the cost profile differs:
+
+| Profile | train n | train t | train net | train netSh | test n | test t | test net | test netSh |
+|---|---|---|---|---|---|---|---|---|
+| CERT (PR #22 baseline) | 200 | +1.19 | **-12.0%** | -0.50 | 96 | +1.15 | **-5.9%** | -0.60 |
+| FUTURES (PR #24) | 200 | +1.19 | **+10.4%** | +0.43 | 96 | +1.15 | **+4.9%** | +0.50 |
+
+The signal hasn't changed (gap mean +0.065% in signal direction, train and test agree, exactly as PR #22 documented). The cost wall fell from 0.63% round-trip to 0.065% (~10×), so the breakeven moved from 12 bp underlying to 1.3 bp — the +6.5 bp gap edge is now 5× the breakeven instead of half. **The Phase-0 verdict was largely cost-bound, not signal-bound.**
+
+Important qualifiers — same as in PR #24's body, repeated here because they bound how confidently this should be read:
+
+1. **t-stat unchanged at 1.15–1.19.** Net positive and consistent across train/test, but not statistically significant at p<0.05. This is a *thin* edge, not a robust one — closer to the pessimistic prior in §6 than to a found edge. The strongest single signal in the EU/US analysis (`vix_2d`, t=−2.96 held-out) is the obvious layer to test on top.
+2. **`FUTURES_PROFILE` numbers are realistic retail estimates, not measured.** 1 bp effective spread + 5 bp commission round-trip are conservative current-environment estimates for OMXS30 futures via a retail broker. The exchange tick alone is ~0.4 bp; the 5 bp commission line is the dominant cost and is broker-specific. **Must be validated against an actual live broker quote before any live work.**
+3. **Implicit basis assumption.** We backtest on the spot index and treat the basis-decay as absorbed into observed price action. For a 1-night hold this is small; would need reconsideration for any multi-night extension.
+
+What this changes in the §5 ranking:
+- **Rank 1 is empirically *supported*** (not yet *confirmed*; that requires live-broker spread validation). The next concrete action sitting on top of it is Phase 1.5 — measuring real retail futures spread for OMXS30 — which is *capital and operations*, not research.
+- **Rank 2 (Grinold breadth)** is now even higher priority *because* the cost-bound interpretation means several other Phase-0 strategies might be salvageable under FUTURES too. The combined-signal portfolio gets ~3–4 candidate signals back in scope.
+- **§3.1 (Multi-day momentum)** drops in priority for the same reason — at futures cost, the 1-day gap edge already clears; we don't need to take on additional vol-decay risk for marginal additional return.
+- **§6 (no-edge possibility)** is still live but slightly less likely than this memo argued. The honest revised prior: maybe 35–40% that there is *some* accessible net edge for a careful retail trader on futures, vs the ~20–25% implicit in §6's framing on certs.
+
+The memo's broader thesis stands: the cost wall (not the signal source) was the binding constraint, and the literature on the overnight return premium predicted exactly what we now observe. The remaining work is operational, not investigative.
