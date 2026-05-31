@@ -5,6 +5,8 @@ from __future__ import annotations
 from decimal import Decimal
 
 from packages.backtest.cost_model import (
+    CERT_PROFILE,
+    FUTURES_PROFILE,
     CostAssumptions,
     estimate_round_trip_cost,
     required_underlying_move_for_breakeven,
@@ -175,3 +177,42 @@ class TestOvernightFinancing:
         higher = CostAssumptions(overnight_financing_pct_per_night=Decimal("0.001"))
         cost = estimate_round_trip_cost(overnight_nights=1, assumptions=higher)
         assert cost.overnight_financing_pct == Decimal("0.001")
+
+
+class TestCostProfiles:
+    """The pre-baked CERT_PROFILE / FUTURES_PROFILE bundles."""
+
+    def test_cert_profile_equals_bare_defaults_regression(self) -> None:
+        """CERT_PROFILE MUST equal `CostAssumptions()` so the 5 Phase-0 strategies'
+        results are reproducible bit-for-bit when re-run with `assumptions=CERT_PROFILE`."""
+        cert = estimate_round_trip_cost(assumptions=CERT_PROFILE)
+        bare = estimate_round_trip_cost()
+        assert cert == bare
+
+    def test_futures_profile_total_cost_is_about_10x_lower_than_cert(self) -> None:
+        cert_total = estimate_round_trip_cost(assumptions=CERT_PROFILE).total_pct
+        fut_total = estimate_round_trip_cost(assumptions=FUTURES_PROFILE).total_pct
+        ratio = cert_total / fut_total
+        assert ratio > Decimal("5"), f"futures should be much cheaper; ratio={ratio}"
+        assert ratio < Decimal("20"), f"sanity: futures shouldn't be 20x+ cheaper; ratio={ratio}"
+
+    def test_futures_profile_has_zero_overnight_financing(self) -> None:
+        """Futures cost-of-carry is in the basis vs spot, not a separate financing line."""
+        cost = estimate_round_trip_cost(overnight_nights=1, assumptions=FUTURES_PROFILE)
+        assert cost.overnight_financing_pct == Decimal("0")
+
+    def test_futures_breakeven_under_5_bp_at_5x(self) -> None:
+        """Underlying breakeven at 5x exposure under FUTURES_PROFILE must be << cert's 12bp."""
+        breakeven = required_underlying_move_for_breakeven(
+            leverage=Decimal("5"), assumptions=FUTURES_PROFILE
+        )
+        # ~6.5 bp cert-terms / 5 = ~1.3 bp underlying. Bound loosely.
+        assert breakeven < Decimal("0.0005"), f"got {breakeven} -- futures breakeven too high"
+
+    def test_futures_profile_overnight_call_does_not_add_financing(self) -> None:
+        """Sanity: even with overnight_nights=N, futures profile keeps financing at 0."""
+        for n in (0, 1, 5, 30):
+            cost = estimate_round_trip_cost(
+                overnight_nights=n, assumptions=FUTURES_PROFILE
+            )
+            assert cost.overnight_financing_pct == Decimal("0")

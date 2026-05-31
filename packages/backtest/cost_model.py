@@ -56,17 +56,22 @@ class CostBreakdown:
 
 @dataclass(frozen=True)
 class CostAssumptions:
-    """Configurable assumptions about cert trading costs.
+    """Configurable assumptions about trading costs.
 
-    Defaults are conservative for liquid OMX/Nasdaq Bull/Bear certs.
+    Defaults are conservative for liquid OMX/Nasdaq Bull/Bear certs (`CERT_PROFILE`).
+    Use `FUTURES_PROFILE` for direct index-futures trading instead -- it has a
+    radically lower cost wall (~10x lower) because futures are exchange-traded
+    with tight bid-ask and small commissions vs issuer-spread certs.
 
     `overnight_financing_pct_per_night` is the per-night holding cost a
     leveraged certificate charges (issuer borrows `(L-1)x` your capital and
     passes a financing rate through). It is only applied when the caller
     explicitly opts in via `overnight_nights > 0` -- otherwise the rule is
-    "no overnight holds" and the rate is irrelevant. Default 0.03%/night is a
-    conservative current-rate-environment estimate; calibrate against real
-    Nordnet Markets statements when we have live data.
+    "no overnight holds" and the rate is irrelevant. Cert default 0.03%/night
+    is a conservative current-rate-environment estimate; calibrate against
+    real Nordnet Markets statements when we have live data. Futures profile
+    sets this to 0 -- futures carry no separate daily-reset financing; the
+    cost-of-carry is priced into the futures basis vs spot.
     """
 
     spread_pct_round_trip: Decimal = Decimal("0.005")  # 0.5% baseline
@@ -74,6 +79,36 @@ class CostAssumptions:
     slippage_pct_round_trip: Decimal = Decimal("0.001")  # 0.1% baseline
     courtage_pct: Decimal = Decimal("0")  # 0 for Nordnet Markets
     overnight_financing_pct_per_night: Decimal = Decimal("0.0003")  # 0.03%/night
+
+
+# Pre-baked cost profiles per instrument class.
+#
+# CERT_PROFILE = the historical Phase-0 default. All five OOS-tested strategies
+# (#10/#14/#15/#20/#22) used this. Keeping it equal to `CostAssumptions()`'s
+# bare defaults preserves their results bit-for-bit.
+CERT_PROFILE = CostAssumptions()
+
+# FUTURES_PROFILE = retail OMXS30 (or equivalent) index-futures trading.
+# Source numbers:
+#   - OMXS30 tick = 0.125 pts on a ~3400-level index = 12.5 SEK on ~340,000
+#     SEK contract notional => one tick ~ 0.0037% of notional. Realistic
+#     retail effective spread ~ 1-2 ticks one-way = ~1 bp round-trip after
+#     market-impact buffer.
+#   - Slippage minimal on liquid futures: ~0.5 bp.
+#   - Retail futures broker commission ~ 50-100 SEK per side on OMXS30 =
+#     ~5 bp round-trip on a single contract. (Better with volume discounts.)
+#   - Overnight financing is 0 in this model: futures don't reset daily;
+#     cost-of-carry is in the basis. Backtesting on spot index this is
+#     absorbed into price action and not double-counted here.
+#   - Stress widening is lower than for certs (~2x vs ~3x) -- exchange order
+#     books stay tighter under stress than issuer-quoted certs.
+FUTURES_PROFILE = CostAssumptions(
+    spread_pct_round_trip=Decimal("0.0001"),  # ~1 bp effective round-trip spread
+    spread_widen_stress_multiplier=Decimal("2.0"),
+    slippage_pct_round_trip=Decimal("0.00005"),  # ~0.5 bp
+    courtage_pct=Decimal("0.0005"),  # ~5 bp retail commission round-trip
+    overnight_financing_pct_per_night=Decimal("0"),  # priced into basis
+)
 
 
 def estimate_round_trip_cost(
