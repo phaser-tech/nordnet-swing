@@ -33,7 +33,12 @@ import structlog
 from dotenv import load_dotenv
 
 from packages.backtest.assembly import assemble_cross_asset_frame
-from packages.backtest.cost_model import estimate_round_trip_cost
+from packages.backtest.cost_model import (
+    CERT_PROFILE,
+    FUTURES_PROFILE,
+    CostAssumptions,
+    estimate_round_trip_cost,
+)
 from packages.backtest.oos import SetStats, run_oos
 from packages.core.domain.signal import Direction
 from packages.market_data.historical import get_bars
@@ -48,6 +53,14 @@ log = structlog.get_logger("run_cross_asset_gap_oos")
 
 LEVERAGE = 5.0  # FIXED. Same as PR #10 -- this is an apples-to-apples test.
 INSTRUMENT = "^OMX"
+
+# Cost-profile registry: --cost-profile {cert,futures}.
+# cert     -> the historical Phase-0 profile (PR #22's published numbers).
+# futures  -> direct OMXS30 retail futures cost (~10x lower wall).
+_COST_PROFILES: dict[str, CostAssumptions] = {
+    "cert": CERT_PROFILE,
+    "futures": FUTURES_PROFILE,
+}
 
 
 def configure_logging() -> None:
@@ -74,6 +87,15 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     p.add_argument("--start", type=date.fromisoformat, default=date(2018, 1, 1))
     p.add_argument("--end", type=date.fromisoformat, default=date.today())
     p.add_argument("--split", type=date.fromisoformat, default=date(2023, 1, 1))
+    p.add_argument(
+        "--cost-profile",
+        choices=sorted(_COST_PROFILES),
+        default="cert",
+        help=(
+            "Instrument cost profile (default: cert -- matches PR #22's published numbers; "
+            "futures -- direct OMXS30-style futures with ~10x lower cost wall)."
+        ),
+    )
     return p.parse_args(argv)
 
 
@@ -161,7 +183,9 @@ def main(argv: list[str] | None = None) -> int:
     args = parse_args(argv)
 
     # Cost includes one-night overnight financing per the ratified exception.
-    cost_breakdown = estimate_round_trip_cost(overnight_nights=1)
+    # The cert profile populates financing; futures profile zeroes it (basis-priced).
+    assumptions = _COST_PROFILES[args.cost_profile]
+    cost_breakdown = estimate_round_trip_cost(overnight_nights=1, assumptions=assumptions)
     cost_pct = float(cost_breakdown.total_pct)
     breakeven_underlying = cost_pct / LEVERAGE
 
@@ -193,17 +217,21 @@ def main(argv: list[str] | None = None) -> int:
         cost_pct=cost_pct,
     )
 
-    print("\n=== OOS validation (cross-asset gap-capture, ^OMX, 5x, one night) ===")
+    print(
+        f"\n=== OOS validation (cross-asset gap-capture, ^OMX, 5x, one night, "
+        f"profile={args.cost_profile.upper()}) ==="
+    )
     print(
         f"Window: {wide.index.min().date()} -> {wide.index.max().date()}  "
         f"Split: {args.split}"
     )
     print(
-        f"Round-trip cost {cost_pct * 100:.2f}% cert "
-        f"(spread {float(cost_breakdown.spread_pct) * 100:.2f}% + "
-        f"slippage {float(cost_breakdown.slippage_pct) * 100:.2f}% + "
-        f"1-night financing {float(cost_breakdown.overnight_financing_pct) * 100:.2f}%)  "
-        f"/ breakeven {breakeven_underlying * 100:.3f}% underlying (per gap)\n"
+        f"Round-trip cost {cost_pct * 100:.3f}% "
+        f"(spread {float(cost_breakdown.spread_pct) * 100:.3f}% + "
+        f"slippage {float(cost_breakdown.slippage_pct) * 100:.3f}% + "
+        f"courtage {float(cost_breakdown.courtage_pct) * 100:.3f}% + "
+        f"1-night financing {float(cost_breakdown.overnight_financing_pct) * 100:.3f}%)  "
+        f"/ breakeven {breakeven_underlying * 100:.4f}% underlying (per gap)\n"
     )
     header = (
         f"{'set':<6}{'trades':>8}{'win%':>9}{'meanMove%':>13}{'t-stat':>8}"

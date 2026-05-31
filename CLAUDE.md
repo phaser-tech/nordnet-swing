@@ -50,12 +50,21 @@ These are non-negotiable. Surface a question before violating one of these:
 
 ## Domain knowledge (non-obvious)
 
-### Nordnet Markets cost structure
-- **Courtage = 0** for Nordnet Markets products via Next API when order > 1000 SEK
+### Cost profiles per instrument class
+Two named bundles in `packages/backtest/cost_model.py` (CERT_PROFILE / FUTURES_PROFILE). `estimate_round_trip_cost(assumptions=...)` takes whichever fits the instrument; the OOS harness picks up the matching `cost_pct`.
+
+**`CERT_PROFILE`** (Nordnet Markets bull/bear/turbo certs; the historical Phase-0 default):
+- Courtage = 0 for Nordnet Markets via Next API when order > 1000 SEK
 - Real cost = issuer spread (0.3–0.8% round-trip normal, up to 2%+ during news)
 - Spread widens 3–5x during major news releases — pause trading in those windows
-- See `packages/backtest/cost_model.py` for the model we use
-- **Important caveat**: our model assumes spread is fixed % of cert position regardless of leverage. In reality, higher-leverage certs (10x+) carry wider spreads. Do not use the cost model to justify leverage choices > 5x without Phase 1 real-spread validation.
+- Overnight financing ~0.03%/night when held overnight (opt-in via `overnight_nights=N`)
+- **Caveat**: assumes spread is fixed % of cert position regardless of leverage. Higher-leverage certs (10x+) carry wider spreads in reality. Do not use this profile to justify leverage choices > 5x without Phase 1 real-spread validation.
+
+**`FUTURES_PROFILE`** (direct OMXS30 index futures or equivalent):
+- ~6.5 bp round-trip total (1 bp effective spread + 0.5 bp slippage + 5 bp retail commission)
+- ~10x lower cost wall than CERT_PROFILE — this is the structural reason the entire Phase-0 corpus may reinterpret on this profile (see PR #22 + futures replication).
+- Overnight financing = 0: futures cost-of-carry is priced into the basis vs spot. Backtests on spot index absorb it into price action.
+- Stress widening lower than certs (~2x vs ~3x): exchange order books stay tighter than issuer quotes under stress.
 
 ### Leveraged certificates have daily reset
 - Bull/Bear certificates apply leverage to *daily* returns, then reset
@@ -155,11 +164,11 @@ Phase 0 explored what daily resolution can offer. Several edge sources (event-wi
 
 Don't propose intraday strategies in Phase 0 — they can't be honestly tested with what we have. Surface them as Phase 1 candidates instead.
 
-### 5x default vs leverage diluting fixed cost
+### 5× *exposure* (per instrument), not "5× leverage" generic
 
-The cost model suggests higher leverage improves edge/cost ratio (fixed % cost spread over smaller notional → more market exposure per cost unit). This math is correct *given the model* but the model assumes constant spread % across leverage levels, which is false in reality (higher-leverage certs have wider spreads).
+The historical "5× default" was implicitly cert-leverage. Re-framed after Phase 0: **5× exposure per instrument**, where the relevant unit is the underlying breakeven (= round-trip cert-terms cost / leverage). Cert breakeven at 5× ≈ 12 bp; futures breakeven at 5× exposure ≈ 1.3 bp. Same exposure number, ~10× different cost wall. Every new strategy declares its instrument profile up-front; the cost model picks up the correct profile.
 
-Do not use the model to justify > 5x leverage without real-spread validation. The "free lunch" of leverage diluting cost is largely a model artifact.
+The leverage-diluting-cost "free lunch" on certs remains a model artifact (cert spreads widen with leverage). On futures the cost is essentially leverage-independent (commission per contract is fixed), so the dilution math actually works there — but only up to the broker's margin limits. Do not use either model to justify > 5× cert leverage without real-spread validation.
 
 ## Edge sources we're NOT hunting
 
